@@ -16,13 +16,15 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 from tqdm import tqdm
 
-DEBUG = False
+import re
+
+DEBUG = True
 FDAMOCKTEST = True
 DRUGMOCKTEST = True
 
 
 def atc():
-    ATCrefDict = {}
+    ATCrefDict = {}  # Eg "A01" : "STOMATOLOGICAL PREPERATIONS"
     ATCinfo = []
     # Configure chrome in detach mode to persist chrome window
     chromeOptions = Options()
@@ -32,17 +34,14 @@ def atc():
     # Insert loop for searching with all alphabets here
     for letter in string.ascii_uppercase:
         alphabet = letter
-        driver.get('https://www.whocc.no/atc_ddd_index/')
-        searchBox = driver.find_element_by_xpath('//*[@id="content"]/form/table/tbody/tr/td[1]/input')
-        searchBox.send_keys(alphabet)
-        driver.find_element_by_class_name('button').click()
+        driver.get('https://www.whocc.no/atc_ddd_index/?code={}&showdescription=no'.format(alphabet))
+
         try:
             # First level Scraping
             text = driver.find_element_by_id('content').text.split('\n')
 
             # Removing unnecessary rows
-            del text[0:2]
-            del text[-1]
+            text = [item for item in text if re.match("[A-Z]\d\d", item)]
             firstCodes = [item[0:3] for item in text]
 
             # Updating Level 1 code & meaning in dictionary: ATCrefDict
@@ -51,15 +50,13 @@ def atc():
             # Logging
             print('First Level: ', len(firstCodes), firstCodes, '\n') if DEBUG == True else None
             for counter1 in firstCodes:
-                driver.get('https://www.whocc.no/atc_ddd_index/' + '?code=' + counter1)
+                driver.get('https://www.whocc.no/atc_ddd_index/?code=' + counter1 + '&showdescription=no')
 
                 # Second level Scraping
                 text2 = driver.find_element_by_id('content').text.split('\n')
 
                 # Removing unnecessary rows
-                del text2[0:2]
-                del text2[-1]
-                del text2[0]
+                text2 = [item for item in text2 if re.match("[A-Z]\d\d", item)]
                 secondCodes = [item.split(' ')[0] for item in text2]
 
                 # Updating Level 2 code & meaning in dictionary: ATCrefDict
@@ -68,15 +65,13 @@ def atc():
                 # Logging
                 print('Second Level: ', len(secondCodes), secondCodes, '\n') if DEBUG == True else None
                 for counter2 in secondCodes:
-                    driver.get('https://www.whocc.no/atc_ddd_index/' + '?code=' + counter2)
+                    driver.get('https://www.whocc.no/atc_ddd_index/?code=' + counter2 + '&showdescription=no')
 
                     # Third level Scraping
                     text3 = driver.find_element_by_id('content').text.split('\n')
 
                     # Removing unnecessary rows
-                    del text3[0:3]
-                    del text3[-1]
-                    del text3[0]
+                    text3 = [item for item in text3 if re.match("[A-Z]\d\d", item)]
                     thirdCodes = [item.split(' ')[0] for item in text3]
 
                     # Updating Level 3 code & meaning in dictionary: ATCrefDict
@@ -85,7 +80,7 @@ def atc():
                     # Logging
                     print('Third Level: ', len(thirdCodes), thirdCodes, '\n') if DEBUG == True else None
                     for counter3 in thirdCodes:
-                        driver.get('https://www.whocc.no/atc_ddd_index/' + '?code=' + counter3)
+                        driver.get('https://www.whocc.no/atc_ddd_index/?code=' + counter3 + "&showdescription=no")
 
                         # Issue01 | Flag setting
                         Issue01 = False
@@ -129,11 +124,12 @@ def atc():
         except(Exception):
             print('Error in ', letter, ', No data found') if DEBUG == True else None
             pass
+
     driver.close()
+
     # Congregating
     ATCinfo = [item for sublist in ATCinfo for item in sublist]
     return [ATCinfo, ATCrefDict]
-
 
 def fda():
     FDAinfo = FDAlinkList = []
@@ -141,7 +137,7 @@ def fda():
         if FDAMOCKTEST:
             os.remove('data/fda/FDA_logger.csv')
     except Exception:
-        None
+        pass
     if FDAMOCKTEST is False:
         chromeOptions = Options()
         chromeOptions.add_experimental_option("detach", True)
@@ -229,7 +225,7 @@ def fda():
 
 def drugs():
     drugsInfo = drugIndexLinks = drugView = []
-    os.remove('data/drugs/Drugs_com_dump_20Mar19.csv')
+    #Todo: Ensure new files are made with an appropriate time stamp
 
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
@@ -271,7 +267,7 @@ def drugs():
     del drugView[0:390]
 
     drugView = set(drugView)
-    drugsFile = open('data/drugs/Drugs_com_dump_20Mar19.csv', 'a')
+    drugsFile = open('data/drugs/Drugs_com_dump_20Mar19.csv', 'a', encoding="utf8")
     sleepCounter = 1
 
     with tqdm(total=len(drugView)) as drugsDotComBar:
@@ -401,32 +397,30 @@ def writeIntermediateryToFile(fileAsInput, dataframe):
 
 
 if __name__ == '__main__':
-    # #########################
-    # # ATC Report Generation #
-    # #########################
-    # startTime = timer()
-    # ATClevel4array, ATC_Level_Dict = atc()
-    #
-    # # Creating Dataframe for text processing
-    # ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
-    #
-    # # Intermediatery save dictionary - For validation purposes
-    # writeIntermediateryToFile(ATC_Level_Dict) if DEBUG == True else None
-    #
-    # # Data processing
-    # ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
-    # ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
-    # ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
-    # ATC_DataFrame['L2_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[3])
-    # ATC_DataFrame['L3_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[4])
-    # ATC_DataFrame['L3_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[5])
-    # ATC_DataFrame = ATC_DataFrame[
-    #     ['L1_Code', 'L1_Name', 'L2_Code', 'L2_Name', 'L3_Code', 'L3_Name', 'ATC_Code', 'Name', 'DDD', 'U', 'Adm.R',
-    #      'Note']]
-    # ATC_DataFrame.to_csv('data/atc/ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
-    # print('ATC Dump generated in {} seconds'.format(timer() - startTime))
+    #########################
+    # ATC Report Generation #
+    #########################
+    startTime = timer()
+    ATClevel4array, ATC_Level_Dict = atc()
+        # # Creating Dataframe for text processing
+    ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
+        # # Intermediatery save dictionary - For validation purposes
+    writeIntermediateryToFile(ATC_Level_Dict, ATC_DataFrame) if DEBUG == True else None
+
+    # Data processing
+    ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
+    ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
+    ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
+    ATC_DataFrame['L2_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[3])
+    ATC_DataFrame['L3_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[4])
+    ATC_DataFrame['L3_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[5])
+    ATC_DataFrame = ATC_DataFrame[['L1_Code', 'L1_Name', 'L2_Code', 'L2_Name', 'L3_Code', 'L3_Name', 'ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note']]
+    ATC_DataFrame.to_csv('data/atc/ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
+    print('ATC Dump generated in {} seconds'.format(timer() - startTime))
+
     #########################
     # FDA Report Generation #
     #########################
     # temp = fda()
-    drugs()
+
+    #drugs()
